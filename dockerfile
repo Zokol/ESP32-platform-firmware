@@ -10,4 +10,6 @@ COPY . .
 
 RUN unzip -p toolchain/xtensa-esp32-elf-linux64.zip xtensa-esp32-elf-linux64-1.22.0-80-g6c4433a-5.2.0.tar | tar xvf -
 
+RUN export PATH="$PATH:/path/to/my/toolchain/xtensa-esp32-elf/bin"
+
 CMD ["bash", "-c", "cp firmware/configs/disobey2020_defconfig firmware/sdkconfig && /opt/badgebuilder/build.sh"]
