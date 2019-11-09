@@ -13,6 +13,9 @@
 #include "driver_hub75.h"
 #include "driver_gxgde0213b1.h"
 #include "driver_fri3d.h"
+#include "driver_flipdotter.h"
+#include "driver_st7735.h"
+#include "driver_st7789v.h"
 
 /* E-INK display as used on the SHA2017 and HackerHotel 2019 badges */
 #if defined(CONFIG_DRIVER_EINK_ENABLE)
@@ -77,6 +80,26 @@
 	#define COLOR_FILL_DEFAULT 0x000000
 	#define COLOR_TEXT_DEFAULT 0xFFFFFF
 	
+/* ST7735 */
+#elif defined(CONFIG_DRIVER_ST7735_ENABLE)
+	#define FB_SIZE ST7735_BUFFER_SIZE
+	#define FB_WIDTH ST7735_WIDTH
+	#define FB_HEIGHT ST7735_HEIGHT
+	#define FB_TYPE_16BPP
+	#define FB_FLUSH(buffer,eink_flags,x0,y0,x1,y1) driver_st7735_write_partial(buffer, x0, y0, x1, y1)
+	#define COLOR_FILL_DEFAULT 0x000000
+	#define COLOR_TEXT_DEFAULT 0xFFFFFF
+	
+/* ST7789V */
+#elif defined(CONFIG_DRIVER_ST7789V_ENABLE)
+	#define FB_SIZE ST7789V_BUFFER_SIZE
+	#define FB_WIDTH ST7789V_WIDTH
+	#define FB_HEIGHT ST7789V_HEIGHT
+	#define FB_TYPE_16BPP
+	#define FB_FLUSH(buffer,eink_flags,x0,y0,x1,y1) driver_st7789v_write_partial(buffer, x0, y0, x1, y1)
+	#define COLOR_FILL_DEFAULT 0x000000
+	#define COLOR_TEXT_DEFAULT 0xFFFFFF
+	
 /* HUB75 led matrix */
 #elif defined(CONFIG_DRIVER_HUB75_ENABLE)
 	#define FB_SIZE HUB75_BUFFER_SIZE
@@ -95,6 +118,17 @@
 	#define FB_HEIGHT FRI3D_HEIGHT
 	#define FB_TYPE_8BPP
 	#define FB_FLUSH(buffer,eink_flags,x0,y0,x1,y1) driver_fri3d_write(buffer);
+	#define COLOR_FILL_DEFAULT 0x000000
+	#define COLOR_TEXT_DEFAULT 0xFFFFFF
+
+/* Otter flipdot matrix */
+#elif CONFIG_DRIVER_FLIPDOTTER_ENABLE
+	#define FB_SIZE FLIPDOTTER_BUFFER_SIZE
+	#define FB_WIDTH FLIPDOTTER_WIDTH
+	#define FB_HEIGHT FLIPDOTTER_HEIGHT
+	#define FB_TYPE_1BPP
+	#define FB_1BPP_VERT
+	#define FB_FLUSH(buffer,eink_flags,x0,y0,x1,y1) driver_flipdotter_write(buffer);
 	#define COLOR_FILL_DEFAULT 0x000000
 	#define COLOR_TEXT_DEFAULT 0xFFFFFF
 #else

@@ -9,10 +9,12 @@
 #include "freertos/queue.h"
 #include "freertos/portmacro.h"
 
-#include "8bkc-hal.h"
+#include "driver_i2s.h"
 
 #include "snd_source_wav.h"
 #include "snd_source_mod.h"
+#include "snd_source_mp3.h"
+#include "snd_source_synth.h"
 
 #ifdef CONFIG_DRIVER_SNDMIXER_ENABLE
 
@@ -29,7 +31,12 @@ typedef enum {
 	CMD_PAUSE,
 	CMD_STOP,
 	CMD_PAUSE_ALL,
-	CMD_RESUME_ALL
+	CMD_RESUME_ALL,
+	CMD_QUEUE_MP3,
+	CMD_QUEUE_MP3_STREAM,
+	CMD_QUEUE_SYNTH,
+	CMD_FREQ,
+	CMD_WAVEFORM
 } sndmixer_cmd_ins_t;
 
 typedef struct {
@@ -121,7 +128,7 @@ static int init_source(int ch, const sndmixer_source_t *srcfns, const void *data
 }
 
 static void handle_cmd(sndmixer_cmd_t *cmd) {
-	if (cmd->cmd==CMD_QUEUE_WAV || cmd->cmd==CMD_QUEUE_MOD) {
+	if (cmd->cmd==CMD_QUEUE_WAV || cmd->cmd==CMD_QUEUE_MOD || cmd->cmd==CMD_QUEUE_MP3 || cmd->cmd==CMD_QUEUE_MP3_STREAM || cmd->cmd==CMD_QUEUE_SYNTH) {
 		int ch=find_free_channel();
 		if (ch<0) return; //no free channels
 		int r=0;
@@ -130,6 +137,14 @@ static void handle_cmd(sndmixer_cmd_t *cmd) {
 			r=init_source(ch, &sndmixer_source_wav, cmd->queue_file_start, cmd->queue_file_end);
 		} else if (cmd->cmd==CMD_QUEUE_MOD) {
 			r=init_source(ch, &sndmixer_source_mod, cmd->queue_file_start, cmd->queue_file_end);
+		} else if (cmd->cmd==CMD_QUEUE_MP3) {
+			r=init_source(ch, &sndmixer_source_mp3, cmd->queue_file_start, cmd->queue_file_end);
+		} else if (cmd->cmd==CMD_QUEUE_MP3_STREAM) {
+			printf("CMD==CMD_QUEUE_MP3_STREAM\n");
+			r=init_source(ch, &sndmixer_source_mp3_stream, cmd->queue_file_start, cmd->queue_file_end);
+		} else if (cmd->cmd==CMD_QUEUE_SYNTH) {
+			printf("CMD==CMD_QUEUE_SYNTH\n");
+			r=init_source(ch, &sndmixer_source_synth, 0, 0);
 		}
 		if (!r) {
 			printf("Sndmixer: Failed to start decoder for id %d\n", cmd->id);
@@ -162,6 +177,18 @@ static void handle_cmd(sndmixer_cmd_t *cmd) {
 		} else if (cmd->cmd==CMD_STOP) {
 			printf("Sndmixer: %d: cleaning up source because of ext request\n", cmd->id); 
 			clean_up_channel(ch);
+		} else if (cmd->cmd==CMD_FREQ) {
+			if (channel[ch].source->set_frequency) {
+				channel[ch].source->set_frequency(channel[ch].src_ctx, cmd->param);
+			} else {
+				printf("Not a synth!\n");
+			}
+		} else if (cmd->cmd==CMD_WAVEFORM) {
+			if (channel[ch].source->set_waveform) {
+				channel[ch].source->set_waveform(channel[ch].src_ctx, cmd->param);
+			} else {
+				printf("Not a synth!\n");
+			}
 		}
 	}
 }
@@ -207,7 +234,7 @@ static void sndmixer_task(void *arg) {
 			s=(s/no_channels)>>8;
 			mixbuf[i]=s+128; //because samples are signed, mix_buf is unsigned
 		}
-		kchal_sound_push(mixbuf, CHUNK_SIZE);
+		driver_i2s_sound_push(mixbuf, CHUNK_SIZE);
 	}
 	//ToDo: de-init channels/buffers/... if we ever implement a deinit cmd
 	vTaskDelete(NULL);
@@ -219,7 +246,7 @@ static void sndmixer_task(void *arg) {
 int sndmixer_init(int p_no_channels) {
 	no_channels=p_no_channels;
 	samplerate=CONFIG_DRIVER_SNDMIXER_SAMPLE_RATE;
-	kchal_sound_start();
+	driver_i2s_sound_start();
 	channel=calloc(sizeof(sndmixer_channel_t), no_channels);
 	if (!channel) return 0;
 	curr_id=0;
@@ -259,6 +286,45 @@ int sndmixer_queue_mod(const void *mod_start, const void *mod_end) {
 		.cmd=CMD_QUEUE_MOD,
 		.queue_file_start=mod_start,
 		.queue_file_end=mod_end,
+		.flags=CHFL_PAUSED
+	};
+	xQueueSend(cmd_queue, &cmd, portMAX_DELAY);
+	return id;
+}
+
+int sndmixer_queue_mp3(const void *mp3_start, const void *mp3_end) {
+	int id=new_id();
+	sndmixer_cmd_t cmd={
+		.id=id,
+		.cmd=CMD_QUEUE_MP3,
+		.queue_file_start=mp3_start,
+		.queue_file_end=mp3_end,
+		.flags=CHFL_PAUSED
+	};
+	xQueueSend(cmd_queue, &cmd, portMAX_DELAY);
+	return id;
+}
+
+int sndmixer_queue_mp3_stream(stream_read_type read_func, void* stream) {
+	printf("Queue mp3 stream.\n");
+	int id=new_id();
+	sndmixer_cmd_t cmd={
+		.id=id,
+		.cmd=CMD_QUEUE_MP3_STREAM,
+		.queue_file_start= (void*) read_func,
+		.queue_file_end=stream,
+		.flags=CHFL_PAUSED
+	};
+	xQueueSend(cmd_queue, &cmd, portMAX_DELAY);
+	return id;
+}
+
+int sndmixer_queue_synth() {
+	printf("sndmixer_queue_synth\n");
+	int id=new_id();
+	sndmixer_cmd_t cmd={
+		.id=id,
+		.cmd=CMD_QUEUE_SYNTH,
 		.flags=CHFL_PAUSED
 	};
 	xQueueSend(cmd_queue, &cmd, portMAX_DELAY);
@@ -317,6 +383,24 @@ void sndmixer_pause_all() {
 void sndmixer_resume_all() {
 	sndmixer_cmd_t cmd={
 		.cmd=CMD_RESUME_ALL,
+	};
+	xQueueSend(cmd_queue, &cmd, portMAX_DELAY);
+}
+
+void sndmixer_freq(int id, uint16_t frequency) {
+	sndmixer_cmd_t cmd={
+		.cmd=CMD_FREQ,
+		.id=id,
+		.param=frequency
+	};
+	xQueueSend(cmd_queue, &cmd, portMAX_DELAY);
+}
+
+void sndmixer_waveform(int id, uint8_t waveform) {
+	sndmixer_cmd_t cmd={
+		.cmd=CMD_WAVEFORM,
+		.id=id,
+		.param=waveform
 	};
 	xQueueSend(cmd_queue, &cmd, portMAX_DELAY);
 }

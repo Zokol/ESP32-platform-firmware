@@ -4,17 +4,15 @@ def reboot():
 	machine.deepsleep(2)
 
 def sleep(duration=0, status=False):
-	import time, os, badge
-	# Not working for Disobey 2020 as the pins are not in the RTC domain
-	#machine.RTC().wake_on_ext0(pin = machine.Pin(19), level = 0)
+	import time, os
+	machine.RTC().wake_on_ext0(pin = machine.Pin(34), level = 0) # MPR121 interrupt
 	#machine.RTC().wake_on_ext1([machine.Pin(5, machine.Pin.IN, machine.Pin.PULL_UP)], 0)
-	#---
 	if (duration >= 86400000): #One day
 		duration = 0
 	if status:
 		import term
 		if duration < 1:
-			term.header(True, "Sleeping until RESET is pressed!")
+			term.header(True, "Sleeping until a touch button is pressed!")
 		else:
 			term.header(True, "Sleeping for "+str(duration)+"ms...")
 	time.sleep(0.05)
@@ -25,13 +23,15 @@ def start(app, status=False):
 		import term, easydraw, display
 		if app == "" or app == "launcher":
 			term.header(True, "Loading menu...")
-			#easydraw.messageCentered("Loading the menu...", False, "/media/busy.png")
 		else:
 			term.header(True, "Loading application "+app+"...")
-			#easydraw.messageCentered("Loading '"+app+"'...", False, "/media/busy.png")
 		try:
-			info = display.pngInfo("/media/busy.png")
-			display.drawPng((display.width()-info[0])//2, (display.height()-info[1])//2, "/media/busy.png")
+			display.drawFill(0x000000)
+			import mascot
+			display.drawPng( 64,  0, mascot.snek                 )
+			display.drawText( 0, 28, "LOADING APP...", 0xFFFFFF, "org18")
+			display.drawText( 0, 52, app,              0xFFFFFF, "org18")
+			display.flush()
 		except:
 			easydraw.messageCentered("Loading...", False, "/media/busy.png")
 	machine.RTC().write_string(app)
